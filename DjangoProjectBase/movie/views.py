@@ -3,6 +3,11 @@ from django.http import HttpResponse
 
 from .models import Movie
 
+import os
+import numpy as np
+from openai import OpenAI
+from dotenv import load_dotenv
+
 import matplotlib.pyplot as plt
 import matplotlib
 import io
@@ -105,6 +110,37 @@ def statistics_view(request):
     genre_graphic = generate_bar_chart(movie_counts_by_genre, 'Genre', 'Number of movies')
 
     return render(request, 'statistics.html', {'year_graphic': year_graphic, 'genre_graphic': genre_graphic})
+
+
+def recommend(request):
+    recommended_movie = None
+    prompt = None
+
+    if request.method == 'POST':
+        prompt = request.POST.get('prompt')
+
+        load_dotenv('../openAI.env')
+        client = OpenAI(api_key=os.environ.get('openai_apikey'))
+
+        def cosine_similarity(a, b):
+            return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+
+        response = client.embeddings.create(input=[prompt], model="text-embedding-3-small")
+        prompt_emb = np.array(response.data[0].embedding, dtype=np.float32)
+
+        best_movie = None
+        max_similarity = -1
+
+        for movie in Movie.objects.all():
+            movie_emb = np.frombuffer(movie.emb, dtype=np.float32)
+            similarity = cosine_similarity(prompt_emb, movie_emb)
+            if similarity > max_similarity:
+                max_similarity = similarity
+                best_movie = movie
+
+        recommended_movie = best_movie
+
+    return render(request, 'recommend.html', {'recommended_movie': recommended_movie, 'prompt': prompt})
 
 
 def generate_bar_chart(data, xlabel, ylabel):
